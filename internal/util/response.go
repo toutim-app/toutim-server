@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 // RespondJSON writes a JSON response with the given status code.
@@ -33,4 +34,9 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+// NowRFC3339 returns the current UTC time in RFC 3339 format.
+func NowRFC3339() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }

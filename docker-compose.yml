@@ -1,0 +1,23 @@
+services:
+  toutim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${TOUTIM_PORT:-8080}:8080"
+    volumes:
+      - toutim-data:/data
+    environment:
+      - TOUTIM_DATA_DIR=/data
+      - TOUTIM_JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - TOUTIM_PORT=8080
+      - TOUTIM_HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  toutim-data:

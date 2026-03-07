@@ -5,6 +5,9 @@ import (
 	"net/http"
 
 	"github.com/fabienbmusic/toutim-server/internal/auth"
+	"github.com/fabienbmusic/toutim-server/internal/export"
+	"github.com/fabienbmusic/toutim-server/internal/files"
+	"github.com/fabienbmusic/toutim-server/internal/sync"
 	"github.com/fabienbmusic/toutim-server/internal/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,7 +16,14 @@ import (
 const version = "0.1.0"
 
 // NewRouter creates and configures the chi router with all routes.
-func NewRouter(logger *slog.Logger, authHandler *auth.Handler, jwtMgr *auth.JWTManager) chi.Router {
+func NewRouter(
+	logger *slog.Logger,
+	authHandler *auth.Handler,
+	jwtMgr *auth.JWTManager,
+	syncHandler *sync.Handler,
+	fileHandler *files.Handler,
+	exportHandler *export.Handler,
+) chi.Router {
 	r := chi.NewRouter()
 
 	// Global middleware
@@ -48,12 +58,30 @@ func NewRouter(logger *slog.Logger, authHandler *auth.Handler, jwtMgr *auth.JWTM
 			})
 		})
 
-		// Protected routes (sync, export, files) — to be added in later phases
+		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(jwtMgr))
-			// Phase 4: sync routes
-			// Phase 5: file routes
-			// Phase 6: export routes
+
+			// Sync routes
+			r.Route("/sync", func(r chi.Router) {
+				r.Use(ContentTypeJSON)
+				r.Post("/push", syncHandler.Push)
+				r.Post("/pull", syncHandler.Pull)
+				r.Get("/status", syncHandler.Status)
+			})
+
+			// File routes
+			r.Route("/files", func(r chi.Router) {
+				r.Post("/upload", fileHandler.Upload)
+				r.Get("/{fileID}", fileHandler.Download)
+				r.Delete("/{fileID}", fileHandler.Delete)
+			})
+
+			// Export routes
+			r.Route("/export", func(r chi.Router) {
+				r.Get("/sqlite", exportHandler.SQLite)
+				r.Get("/json", exportHandler.JSON)
+			})
 		})
 	})
 

@@ -16,6 +16,9 @@ import (
 	"github.com/fabienbmusic/toutim-server/internal/auth"
 	"github.com/fabienbmusic/toutim-server/internal/config"
 	"github.com/fabienbmusic/toutim-server/internal/database"
+	"github.com/fabienbmusic/toutim-server/internal/export"
+	"github.com/fabienbmusic/toutim-server/internal/files"
+	"github.com/fabienbmusic/toutim-server/internal/sync"
 )
 
 func main() {
@@ -53,8 +56,19 @@ func main() {
 	jwtMgr := auth.NewJWTManager(cfg.Auth)
 	authHandler := auth.NewHandler(dbMgr, jwtMgr, logger)
 
+	// Initialize sync
+	syncEngine := sync.NewEngine(dbMgr, logger, cfg.Sync.MaxChangesPerPush)
+	syncHandler := sync.NewHandler(syncEngine, logger)
+
+	// Initialize files
+	maxFileSize := int64(10 * 1024 * 1024) // 10MB default
+	fileHandler := files.NewHandler(cfg.Data.Dir, maxFileSize, logger)
+
+	// Initialize export
+	exportHandler := export.NewHandler(dbMgr, logger)
+
 	// Build router
-	router := api.NewRouter(logger, authHandler, jwtMgr)
+	router := api.NewRouter(logger, authHandler, jwtMgr, syncHandler, fileHandler, exportHandler)
 
 	// Create HTTP server
 	addr := net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port))

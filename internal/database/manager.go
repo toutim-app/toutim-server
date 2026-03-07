@@ -97,6 +97,11 @@ func (m *DatabaseManager) UserDB(userID string) (*sql.DB, error) {
 	return db, nil
 }
 
+// DataDir returns the data directory path.
+func (m *DatabaseManager) DataDir() string {
+	return m.dataDir
+}
+
 // RemoveUserDB removes a user's database connection from the pool
 // and deletes their database file and files directory.
 func (m *DatabaseManager) RemoveUserDB(userID string) error {
