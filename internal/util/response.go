@@ -1,0 +1,36 @@
+package util
+
+import (
+	"encoding/json"
+	"log/slog"
+	"net/http"
+)
+
+// RespondJSON writes a JSON response with the given status code.
+func RespondJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		slog.Error("failed to encode response", "error", err)
+	}
+}
+
+// ErrorResponse represents a JSON error response.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// RespondError writes a JSON error response with the given status code.
+func RespondError(w http.ResponseWriter, status int, message string) {
+	RespondJSON(w, status, ErrorResponse{Error: message})
+}
+
+// DecodeJSON decodes a JSON request body into the given value.
+// Returns false and sends an error response if decoding fails.
+func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		RespondError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return false
+	}
+	return true
+}
