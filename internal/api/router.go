@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/fabienbmusic/toutim-server/internal/auth"
+	"github.com/fabienbmusic/toutim-server/internal/database"
 	"github.com/fabienbmusic/toutim-server/internal/export"
 	"github.com/fabienbmusic/toutim-server/internal/files"
 	"github.com/fabienbmusic/toutim-server/internal/sync"
@@ -18,6 +19,7 @@ const version = "0.1.0"
 // NewRouter creates and configures the chi router with all routes.
 func NewRouter(
 	logger *slog.Logger,
+	dbMgr *database.DatabaseManager,
 	authHandler *auth.Handler,
 	jwtMgr *auth.JWTManager,
 	syncHandler *sync.Handler,
@@ -49,6 +51,10 @@ func NewRouter(
 			r.Post("/register", authHandler.Register)
 			r.Post("/login", authHandler.Login)
 			r.Post("/refresh", authHandler.Refresh)
+			r.Post("/verify-email", authHandler.VerifyEmail)
+			r.Post("/resend-verification", authHandler.ResendVerification)
+			r.Post("/forgot-password", authHandler.ForgotPassword)
+			r.Post("/reset-password", authHandler.ResetPassword)
 
 			// Auth routes (protected)
 			r.Group(func(r chi.Router) {
@@ -62,9 +68,10 @@ func NewRouter(
 		r.Group(func(r chi.Router) {
 			r.Use(auth.Middleware(jwtMgr))
 
-			// Sync routes
+			// Sync routes (require verified email)
 			r.Route("/sync", func(r chi.Router) {
 				r.Use(ContentTypeJSON)
+				r.Use(RequireEmailVerified(dbMgr))
 				r.Post("/push", syncHandler.Push)
 				r.Post("/pull", syncHandler.Pull)
 				r.Get("/status", syncHandler.Status)
@@ -86,4 +93,31 @@ func NewRouter(
 	})
 
 	return r
+}
+
+// RequireEmailVerified returns middleware that blocks requests from users
+// whose email is not verified.
+func RequireEmailVerified(dbMgr *database.DatabaseManager) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := auth.UserIDFromContext(r.Context())
+			if userID == "" {
+				util.RespondError(w, http.StatusUnauthorized, "unauthorized")
+				return
+			}
+
+			user, err := database.GetUserByID(dbMgr.UsersDB(), userID)
+			if err != nil || user == nil {
+				util.RespondError(w, http.StatusUnauthorized, "user not found")
+				return
+			}
+
+			if !user.EmailVerified {
+				util.RespondError(w, http.StatusForbidden, "email not verified")
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

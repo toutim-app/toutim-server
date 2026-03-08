@@ -9,6 +9,9 @@ import (
 //go:embed schema/users_schema.sql
 var usersSchemaSQL string
 
+//go:embed schema/users_schema_v2.sql
+var usersSchemaV2SQL string
+
 //go:embed schema/user_data_schema.sql
 var userDataSchemaSQL string
 
@@ -21,6 +24,7 @@ type Migration struct {
 // Users database migrations.
 var usersMigrations = []Migration{
 	{Version: 1, SQL: usersSchemaSQL},
+	{Version: 2, SQL: usersSchemaV2SQL},
 }
 
 // Per-user database migrations.

@@ -1,6 +1,8 @@
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -39,4 +41,10 @@ func DecodeJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 // NowRFC3339 returns the current UTC time in RFC 3339 format.
 func NowRFC3339() string {
 	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// HashToken returns the SHA-256 hex digest of a token string.
+func HashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }

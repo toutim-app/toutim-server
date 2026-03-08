@@ -9,6 +9,24 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// SMTPConfig holds email sending settings.
+// When Host is empty, email features (verification, password reset) are disabled.
+type SMTPConfig struct {
+	Host        string `toml:"host"`
+	Port        int    `toml:"port"`
+	Username    string `toml:"username"`
+	Password    string `toml:"password"`
+	FromAddress string `toml:"from_address"`
+	FromName    string `toml:"from_name"`
+	UseTLS      bool   `toml:"use_tls"`
+	BaseURL     string `toml:"base_url"`
+}
+
+// Enabled returns true if SMTP is configured (host is set).
+func (c SMTPConfig) Enabled() bool {
+	return c.Host != ""
+}
+
 // Config holds all server configuration.
 type Config struct {
 	Server   ServerConfig   `toml:"server"`
@@ -16,6 +34,7 @@ type Config struct {
 	Database DatabaseConfig `toml:"database"`
 	Auth     AuthConfig     `toml:"auth"`
 	Sync     SyncConfig     `toml:"sync"`
+	SMTP     SMTPConfig     `toml:"smtp"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -74,6 +93,10 @@ func defaults() Config {
 			MaxChangesPerPush: 1000,
 			MaxFileSize:       "10MB",
 		},
+		SMTP: SMTPConfig{
+			Port:   587,
+			UseTLS: false,
+		},
 	}
 }
 
@@ -114,6 +137,36 @@ func Load() (Config, error) {
 		cfg.Database.PoolSize = size
 	}
 
+	// SMTP environment variables
+	if v := os.Getenv("TOUTIM_SMTP_HOST"); v != "" {
+		cfg.SMTP.Host = v
+	}
+	if v := os.Getenv("TOUTIM_SMTP_PORT"); v != "" {
+		port, err := strconv.Atoi(v)
+		if err != nil {
+			return cfg, fmt.Errorf("invalid TOUTIM_SMTP_PORT: %w", err)
+		}
+		cfg.SMTP.Port = port
+	}
+	if v := os.Getenv("TOUTIM_SMTP_USERNAME"); v != "" {
+		cfg.SMTP.Username = v
+	}
+	if v := os.Getenv("TOUTIM_SMTP_PASSWORD"); v != "" {
+		cfg.SMTP.Password = v
+	}
+	if v := os.Getenv("TOUTIM_SMTP_FROM_ADDRESS"); v != "" {
+		cfg.SMTP.FromAddress = v
+	}
+	if v := os.Getenv("TOUTIM_SMTP_FROM_NAME"); v != "" {
+		cfg.SMTP.FromName = v
+	}
+	if v := os.Getenv("TOUTIM_SMTP_USE_TLS"); v != "" {
+		cfg.SMTP.UseTLS = v == "true" || v == "1"
+	}
+	if v := os.Getenv("TOUTIM_SMTP_BASE_URL"); v != "" {
+		cfg.SMTP.BaseURL = v
+	}
+
 	return cfg, nil
 }
 
@@ -127,6 +180,17 @@ func (c Config) Validate() error {
 	}
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("invalid port: %d", c.Server.Port)
+	}
+	if c.SMTP.Enabled() {
+		if c.SMTP.FromAddress == "" {
+			return fmt.Errorf("smtp.from_address is required when SMTP is enabled")
+		}
+		if c.SMTP.BaseURL == "" {
+			return fmt.Errorf("smtp.base_url is required when SMTP is enabled")
+		}
+		if c.SMTP.Port < 1 || c.SMTP.Port > 65535 {
+			return fmt.Errorf("invalid smtp.port: %d", c.SMTP.Port)
+		}
 	}
 	return nil
 }

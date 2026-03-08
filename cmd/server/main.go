@@ -16,6 +16,7 @@ import (
 	"github.com/fabienbmusic/toutim-server/internal/auth"
 	"github.com/fabienbmusic/toutim-server/internal/config"
 	"github.com/fabienbmusic/toutim-server/internal/database"
+	"github.com/fabienbmusic/toutim-server/internal/email"
 	"github.com/fabienbmusic/toutim-server/internal/export"
 	"github.com/fabienbmusic/toutim-server/internal/files"
 	"github.com/fabienbmusic/toutim-server/internal/sync"
@@ -52,9 +53,17 @@ func main() {
 	}
 	defer dbMgr.Close()
 
+	// Initialize email sender
+	emailSender := email.NewSender(cfg.SMTP, logger)
+	if emailSender.Enabled() {
+		logger.Info("email service enabled", "smtp_host", cfg.SMTP.Host)
+	} else {
+		logger.Info("email service disabled (SMTP not configured)")
+	}
+
 	// Initialize auth
 	jwtMgr := auth.NewJWTManager(cfg.Auth)
-	authHandler := auth.NewHandler(dbMgr, jwtMgr, logger)
+	authHandler := auth.NewHandler(dbMgr, jwtMgr, emailSender, cfg.SMTP, logger)
 
 	// Initialize sync
 	syncEngine := sync.NewEngine(dbMgr, logger, cfg.Sync.MaxChangesPerPush)
@@ -68,7 +77,7 @@ func main() {
 	exportHandler := export.NewHandler(dbMgr, logger)
 
 	// Build router
-	router := api.NewRouter(logger, authHandler, jwtMgr, syncHandler, fileHandler, exportHandler)
+	router := api.NewRouter(logger, dbMgr, authHandler, jwtMgr, syncHandler, fileHandler, exportHandler)
 
 	// Create HTTP server
 	addr := net.JoinHostPort(cfg.Server.Host, strconv.Itoa(cfg.Server.Port))

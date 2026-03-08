@@ -1,15 +1,15 @@
 package auth
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"time"
 
+	"github.com/fabienbmusic/toutim-server/internal/config"
 	"github.com/fabienbmusic/toutim-server/internal/database"
+	"github.com/fabienbmusic/toutim-server/internal/email"
 	"github.com/fabienbmusic/toutim-server/internal/model"
 	"github.com/fabienbmusic/toutim-server/internal/util"
 	"github.com/google/uuid"
@@ -19,17 +19,21 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 
 // Handler handles authentication endpoints.
 type Handler struct {
-	dbMgr  *database.DatabaseManager
-	jwtMgr *JWTManager
-	logger *slog.Logger
+	dbMgr       *database.DatabaseManager
+	jwtMgr      *JWTManager
+	emailSender *email.Sender
+	smtpCfg     config.SMTPConfig
+	logger      *slog.Logger
 }
 
 // NewHandler creates a new auth handler.
-func NewHandler(dbMgr *database.DatabaseManager, jwtMgr *JWTManager, logger *slog.Logger) *Handler {
+func NewHandler(dbMgr *database.DatabaseManager, jwtMgr *JWTManager, emailSender *email.Sender, smtpCfg config.SMTPConfig, logger *slog.Logger) *Handler {
 	return &Handler{
-		dbMgr:  dbMgr,
-		jwtMgr: jwtMgr,
-		logger: logger,
+		dbMgr:       dbMgr,
+		jwtMgr:      jwtMgr,
+		emailSender: emailSender,
+		smtpCfg:     smtpCfg,
+		logger:      logger,
 	}
 }
 
@@ -58,13 +62,31 @@ type authResponse struct {
 }
 
 type userResponse struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
 }
 
 type tokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
+}
+
+type forgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+type resetPasswordRequest struct {
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password"`
+}
+
+type verifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+type resendVerificationRequest struct {
+	Email string `json:"email"`
 }
 
 // Register handles POST /api/auth/register
@@ -155,10 +177,50 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle email verification
+	emailVerified := false
+	if h.emailSender.Enabled() {
+		rawToken, tokenHash, err := email.GenerateToken()
+		if err != nil {
+			h.logger.Error("failed to generate verification token", "error", err)
+		} else {
+			vToken := model.EmailVerificationToken{
+				ID:        uuid.New().String(),
+				UserID:    userID,
+				TokenHash: tokenHash,
+				ExpiresAt: time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
+				CreatedAt: now,
+			}
+			if err := database.StoreEmailVerificationToken(usersDB, vToken); err != nil {
+				h.logger.Error("failed to store verification token", "error", err)
+			} else {
+				subject, body, err := email.RenderVerificationEmail(h.smtpCfg.BaseURL, rawToken)
+				if err != nil {
+					h.logger.Error("failed to render verification email", "error", err)
+				} else {
+					go func() {
+						if err := h.emailSender.Send(req.Email, subject, body); err != nil {
+							h.logger.Error("failed to send verification email", "error", err, "email", req.Email)
+						} else {
+							h.logger.Info("verification email sent", "email", req.Email)
+						}
+					}()
+				}
+			}
+		}
+	} else {
+		// No SMTP configured: auto-verify user
+		if err := database.SetEmailVerified(usersDB, userID, now); err != nil {
+			h.logger.Error("failed to auto-verify user", "error", err)
+		} else {
+			emailVerified = true
+		}
+	}
+
 	h.logger.Info("user registered", "user_id", userID, "email", req.Email)
 
 	util.RespondJSON(w, http.StatusCreated, authResponse{
-		User:         &userResponse{ID: userID, Email: req.Email},
+		User:         &userResponse{ID: userID, Email: req.Email, EmailVerified: emailVerified},
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
@@ -224,7 +286,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("user logged in", "user_id", user.ID)
 
 	util.RespondJSON(w, http.StatusOK, authResponse{
-		User:         &userResponse{ID: user.ID, Email: user.Email},
+		User:         &userResponse{ID: user.ID, Email: user.Email, EmailVerified: user.EmailVerified},
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
@@ -252,7 +314,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	usersDB := h.dbMgr.UsersDB()
 
 	// Check token exists in database (not revoked)
-	tokenHash := hashToken(req.RefreshToken)
+	tokenHash := util.HashToken(req.RefreshToken)
 	storedToken, err := database.GetRefreshToken(usersDB, tokenHash)
 	if err != nil {
 		h.logger.Error("failed to get refresh token", "error", err)
@@ -315,7 +377,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenHash := hashToken(req.RefreshToken)
+	tokenHash := util.HashToken(req.RefreshToken)
 	if err := database.DeleteRefreshToken(h.dbMgr.UsersDB(), tokenHash); err != nil {
 		h.logger.Error("failed to delete refresh token", "error", err)
 	}
@@ -355,21 +417,269 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	util.RespondJSON(w, http.StatusOK, map[string]string{"message": "account deleted"})
 }
 
+// VerifyEmail handles POST /api/auth/verify-email
+func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req verifyEmailRequest
+	if !util.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.Token == "" {
+		util.RespondError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+
+	usersDB := h.dbMgr.UsersDB()
+	tokenHash := util.HashToken(req.Token)
+
+	storedToken, err := database.GetEmailVerificationToken(usersDB, tokenHash)
+	if err != nil {
+		h.logger.Error("failed to get verification token", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if storedToken == nil {
+		util.RespondError(w, http.StatusBadRequest, "invalid or expired verification token")
+		return
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, storedToken.ExpiresAt)
+	if err != nil || time.Now().UTC().After(expiresAt) {
+		database.DeleteEmailVerificationToken(usersDB, tokenHash)
+		util.RespondError(w, http.StatusBadRequest, "verification token has expired")
+		return
+	}
+
+	now := util.NowRFC3339()
+	if err := database.SetEmailVerified(usersDB, storedToken.UserID, now); err != nil {
+		h.logger.Error("failed to verify email", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	database.DeleteEmailVerificationTokensByUser(usersDB, storedToken.UserID)
+
+	h.logger.Info("email verified", "user_id", storedToken.UserID)
+	util.RespondJSON(w, http.StatusOK, map[string]string{"message": "email verified successfully"})
+}
+
+// ResendVerification handles POST /api/auth/resend-verification
+func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	if !h.emailSender.Enabled() {
+		util.RespondError(w, http.StatusServiceUnavailable, "email service not configured")
+		return
+	}
+
+	var req resendVerificationRequest
+	if !util.DecodeJSON(w, r, &req) {
+		return
+	}
+	if !emailRegex.MatchString(req.Email) {
+		util.RespondError(w, http.StatusBadRequest, "invalid email format")
+		return
+	}
+
+	usersDB := h.dbMgr.UsersDB()
+
+	user, err := database.GetUserByEmail(usersDB, req.Email)
+	if err != nil {
+		h.logger.Error("failed to get user", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Always return success to avoid email enumeration
+	if user == nil || user.EmailVerified {
+		util.RespondJSON(w, http.StatusOK, map[string]string{
+			"message": "if the email exists and is not verified, a verification email has been sent",
+		})
+		return
+	}
+
+	database.DeleteEmailVerificationTokensByUser(usersDB, user.ID)
+
+	rawToken, tokenHash, err := email.GenerateToken()
+	if err != nil {
+		h.logger.Error("failed to generate verification token", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	now := util.NowRFC3339()
+	vToken := model.EmailVerificationToken{
+		ID:        uuid.New().String(),
+		UserID:    user.ID,
+		TokenHash: tokenHash,
+		ExpiresAt: time.Now().UTC().Add(24 * time.Hour).Format(time.RFC3339),
+		CreatedAt: now,
+	}
+	if err := database.StoreEmailVerificationToken(usersDB, vToken); err != nil {
+		h.logger.Error("failed to store verification token", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	subject, body, err := email.RenderVerificationEmail(h.smtpCfg.BaseURL, rawToken)
+	if err != nil {
+		h.logger.Error("failed to render verification email", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	go func() {
+		if err := h.emailSender.Send(req.Email, subject, body); err != nil {
+			h.logger.Error("failed to send verification email", "error", err, "email", req.Email)
+		}
+	}()
+
+	util.RespondJSON(w, http.StatusOK, map[string]string{
+		"message": "if the email exists and is not verified, a verification email has been sent",
+	})
+}
+
+// ForgotPassword handles POST /api/auth/forgot-password
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.emailSender.Enabled() {
+		util.RespondError(w, http.StatusServiceUnavailable, "email service not configured")
+		return
+	}
+
+	var req forgotPasswordRequest
+	if !util.DecodeJSON(w, r, &req) {
+		return
+	}
+	if !emailRegex.MatchString(req.Email) {
+		util.RespondError(w, http.StatusBadRequest, "invalid email format")
+		return
+	}
+
+	usersDB := h.dbMgr.UsersDB()
+
+	user, err := database.GetUserByEmail(usersDB, req.Email)
+	if err != nil {
+		h.logger.Error("failed to get user", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Always return success to prevent email enumeration
+	if user == nil || !user.IsActive {
+		util.RespondJSON(w, http.StatusOK, map[string]string{
+			"message": "if the email exists, a password reset link has been sent",
+		})
+		return
+	}
+
+	database.DeletePasswordResetTokensByUser(usersDB, user.ID)
+
+	rawToken, tokenHash, err := email.GenerateToken()
+	if err != nil {
+		h.logger.Error("failed to generate reset token", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	const resetTokenTTL = 30 * time.Minute
+
+	now := util.NowRFC3339()
+	rToken := model.PasswordResetToken{
+		ID:        uuid.New().String(),
+		UserID:    user.ID,
+		TokenHash: tokenHash,
+		ExpiresAt: time.Now().UTC().Add(resetTokenTTL).Format(time.RFC3339),
+		CreatedAt: now,
+	}
+	if err := database.StorePasswordResetToken(usersDB, rToken); err != nil {
+		h.logger.Error("failed to store reset token", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	subject, body, err := email.RenderPasswordResetEmail(h.smtpCfg.BaseURL, rawToken, 30)
+	if err != nil {
+		h.logger.Error("failed to render reset email", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	go func() {
+		if err := h.emailSender.Send(user.Email, subject, body); err != nil {
+			h.logger.Error("failed to send reset email", "error", err, "email", user.Email)
+		}
+	}()
+
+	h.logger.Info("password reset email sent", "user_id", user.ID)
+	util.RespondJSON(w, http.StatusOK, map[string]string{
+		"message": "if the email exists, a password reset link has been sent",
+	})
+}
+
+// ResetPassword handles POST /api/auth/reset-password
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req resetPasswordRequest
+	if !util.DecodeJSON(w, r, &req) {
+		return
+	}
+	if req.Token == "" {
+		util.RespondError(w, http.StatusBadRequest, "token is required")
+		return
+	}
+	if len(req.NewPassword) < minPasswordLen {
+		util.RespondError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+
+	usersDB := h.dbMgr.UsersDB()
+	tokenHash := util.HashToken(req.Token)
+
+	storedToken, err := database.GetPasswordResetToken(usersDB, tokenHash)
+	if err != nil {
+		h.logger.Error("failed to get reset token", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if storedToken == nil {
+		util.RespondError(w, http.StatusBadRequest, "invalid or expired reset token")
+		return
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, storedToken.ExpiresAt)
+	if err != nil || time.Now().UTC().After(expiresAt) {
+		database.DeletePasswordResetToken(usersDB, tokenHash)
+		util.RespondError(w, http.StatusBadRequest, "reset token has expired")
+		return
+	}
+
+	hash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		h.logger.Error("failed to hash password", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	now := util.NowRFC3339()
+	if err := database.UpdatePasswordHash(usersDB, storedToken.UserID, hash, now); err != nil {
+		h.logger.Error("failed to update password", "error", err)
+		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Delete all reset tokens and invalidate all sessions
+	database.DeletePasswordResetTokensByUser(usersDB, storedToken.UserID)
+	database.DeleteRefreshTokensByUser(usersDB, storedToken.UserID)
+
+	h.logger.Info("password reset successful", "user_id", storedToken.UserID)
+	util.RespondJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
+}
+
 // storeRefreshToken hashes and stores a refresh token.
 func (h *Handler) storeRefreshToken(usersDB *sql.DB, userID, jti, rawToken string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	token := model.RefreshToken{
 		ID:        jti,
 		UserID:    userID,
-		TokenHash: hashToken(rawToken),
+		TokenHash: util.HashToken(rawToken),
 		ExpiresAt: time.Now().UTC().Add(h.jwtMgr.refreshTokenTTL).Format(time.RFC3339),
 		CreatedAt: now,
 	}
 	return database.StoreRefreshToken(usersDB, token)
-}
-
-// hashToken returns the SHA-256 hex hash of a token string.
-func hashToken(token string) string {
-	h := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(h[:])
 }
