@@ -1,10 +1,27 @@
 services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    depends_on:
+      toutim:
+        condition: service_healthy
+    restart: unless-stopped
+
   toutim:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "${TOUTIM_PORT:-8080}:8080"
+    expose:
+      - "8080"  # Internal only, not published to host
     volumes:
       - toutim-data:/data
     environment:
@@ -21,3 +38,5 @@ services:
 
 volumes:
   toutim-data:
+  caddy-data:     # Certificats Let's Encrypt
+  caddy-config:
