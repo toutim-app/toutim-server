@@ -264,6 +264,8 @@ Toutes les routes sont préfixées par `/api`.
 
 1. **Reverse proxy** : placez le serveur derrière Nginx ou Caddy pour gérer le TLS (HTTPS)
 
+   **Nginx :**
+
    ```nginx
    server {
        listen 443 ssl;
@@ -281,6 +283,34 @@ Toutes les routes sont préfixées par `/api`.
            client_max_body_size 12M;
        }
    }
+   ```
+
+   **Apache** (modules requis : `proxy`, `proxy_http`, `ssl`, `headers`) :
+
+   ```apache
+   <VirtualHost *:443>
+       ServerName toutim.example.com
+
+       SSLEngine on
+       SSLCertificateFile /etc/letsencrypt/live/toutim.example.com/fullchain.pem
+       SSLCertificateKeyFile /etc/letsencrypt/live/toutim.example.com/privkey.pem
+
+       ProxyPreserveHost On
+       ProxyPass / http://127.0.0.1:8080/
+       ProxyPassReverse / http://127.0.0.1:8080/
+
+       RequestHeader set X-Forwarded-Proto "https"
+       RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+
+       LimitRequestBody 12582912
+   </VirtualHost>
+   ```
+
+   Pour activer les modules Apache nécessaires :
+
+   ```bash
+   sudo a2enmod proxy proxy_http ssl headers
+   sudo systemctl reload apache2
    ```
 
 2. **Secret JWT** : utilisez un secret aléatoire robuste (>= 32 caractères)

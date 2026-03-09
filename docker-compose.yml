@@ -9,7 +9,7 @@ services:
       - toutim-data:/data
     environment:
       - TOUTIM_DATA_DIR=/data
-      - TOUTIM_JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - TOUTIM_JWT_SECRET=${TOUTIM_JWT_SECRET:?TOUTIM_JWT_SECRET must be set}
       - TOUTIM_PORT=8080
       - TOUTIM_HOST=0.0.0.0
     restart: unless-stopped
