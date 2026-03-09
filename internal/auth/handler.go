@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/fabienbmusic/toutim-server/internal/config"
@@ -42,6 +43,67 @@ func respondHTML(w http.ResponseWriter, status int, title, message string) {
 </div>
 </body>
 </html>`, title, title, message)
+}
+
+// respondResetForm writes the password reset HTML form.
+// If errorMsg is non-empty, it is displayed as an error above the form.
+func respondResetForm(w http.ResponseWriter, token, errorMsg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+
+	var errorBlock string
+	if errorMsg != "" {
+		errorBlock = fmt.Sprintf(`<p style="color:#EB5757;font-size:14px;margin:0 0 16px;font-weight:500;">%s</p>`, errorMsg)
+	}
+
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Réinitialiser le mot de passe — Toutim</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8f9fa; color: #333; }
+  .card { background: #fff; border-radius: 16px; padding: 40px; max-width: 420px; width: 100%%; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  h1 { font-size: 24px; margin: 0 0 8px; text-align: center; }
+  .subtitle { font-size: 15px; color: #666; text-align: center; margin: 0 0 24px; }
+  label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #333; }
+  input[type=password] { width: 100%%; padding: 12px; border: 1px solid #E8E8E8; border-radius: 12px; font-size: 16px; box-sizing: border-box; margin-bottom: 16px; outline: none; transition: border-color 0.2s; }
+  input[type=password]:focus { border-color: #2D9CDB; }
+  button { width: 100%%; padding: 14px; background: #2D9CDB; color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+  button:hover { background: #2589c0; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
+  .error { color: #EB5757; font-size: 13px; margin: -12px 0 12px; display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Nouveau mot de passe</h1>
+  <p class="subtitle">Choisissez un nouveau mot de passe pour votre compte.</p>
+  %s
+  <form method="POST" action="" onsubmit="return validate()">
+    <input type="hidden" name="token" value="%s">
+    <label for="pw">Mot de passe</label>
+    <input type="password" id="pw" name="new_password" minlength="8" required placeholder="8 caractères minimum">
+    <label for="pw2">Confirmer le mot de passe</label>
+    <input type="password" id="pw2" minlength="8" required placeholder="Retapez le mot de passe">
+    <p id="err" class="error"></p>
+    <button type="submit">Réinitialiser</button>
+  </form>
+</div>
+<script>
+function validate() {
+  var pw = document.getElementById('pw').value;
+  var pw2 = document.getElementById('pw2').value;
+  var err = document.getElementById('err');
+  if (pw.length < 8) { err.textContent = 'Le mot de passe doit contenir au moins 8 caractères.'; err.style.display = 'block'; return false; }
+  if (pw !== pw2) { err.textContent = 'Les mots de passe ne correspondent pas.'; err.style.display = 'block'; return false; }
+  err.style.display = 'none';
+  return true;
+}
+</script>
+</body>
+</html>`, errorBlock, token)
 }
 
 // Handler handles authentication endpoints.
@@ -637,53 +699,130 @@ func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ResetPassword handles POST /api/auth/reset-password
-func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
-	var req resetPasswordRequest
-	if !util.DecodeJSON(w, r, &req) {
-		return
-	}
-	if req.Token == "" {
-		util.RespondError(w, http.StatusBadRequest, "token is required")
-		return
-	}
-	if len(req.NewPassword) < minPasswordLen {
-		util.RespondError(w, http.StatusBadRequest, "password must be at least 8 characters")
+// ResetPasswordForm handles GET /api/auth/reset-password?token=...
+// It validates the token and renders an HTML form to enter a new password.
+func (h *Handler) ResetPasswordForm(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		respondHTML(w, http.StatusBadRequest, "Lien invalide", "Le lien de réinitialisation est invalide ou incomplet.")
 		return
 	}
 
 	usersDB := h.dbMgr.UsersDB()
-	tokenHash := util.HashToken(req.Token)
+	tokenHash := util.HashToken(token)
 
 	storedToken, err := database.GetPasswordResetToken(usersDB, tokenHash)
 	if err != nil {
 		h.logger.Error("failed to get reset token", "error", err)
-		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		respondHTML(w, http.StatusInternalServerError, "Erreur", "Une erreur interne est survenue. Veuillez réessayer.")
 		return
 	}
 	if storedToken == nil {
-		util.RespondError(w, http.StatusBadRequest, "invalid or expired reset token")
+		respondHTML(w, http.StatusBadRequest, "Lien invalide", "Ce lien de réinitialisation est invalide ou a déjà été utilisé.")
 		return
 	}
 
 	expiresAt, err := time.Parse(time.RFC3339, storedToken.ExpiresAt)
 	if err != nil || time.Now().UTC().After(expiresAt) {
 		database.DeletePasswordResetToken(usersDB, tokenHash)
-		util.RespondError(w, http.StatusBadRequest, "reset token has expired")
+		respondHTML(w, http.StatusBadRequest, "Lien expiré", "Ce lien de réinitialisation a expiré. Veuillez en demander un nouveau depuis l'application.")
 		return
 	}
 
-	hash, err := HashPassword(req.NewPassword)
+	respondResetForm(w, token, "")
+}
+
+// ResetPassword handles POST /api/auth/reset-password
+// Accepts both JSON (mobile API) and form-data (browser form).
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var token, newPassword string
+	isForm := strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded")
+
+	if isForm {
+		if err := r.ParseForm(); err != nil {
+			respondResetForm(w, "", "Formulaire invalide.")
+			return
+		}
+		token = r.FormValue("token")
+		newPassword = r.FormValue("new_password")
+	} else {
+		var req resetPasswordRequest
+		if !util.DecodeJSON(w, r, &req) {
+			return
+		}
+		token = req.Token
+		newPassword = req.NewPassword
+	}
+
+	if token == "" {
+		if isForm {
+			respondHTML(w, http.StatusBadRequest, "Erreur", "Token manquant.")
+		} else {
+			util.RespondError(w, http.StatusBadRequest, "token is required")
+		}
+		return
+	}
+	if len(newPassword) < minPasswordLen {
+		if isForm {
+			respondResetForm(w, token, "Le mot de passe doit contenir au moins 8 caractères.")
+		} else {
+			util.RespondError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		}
+		return
+	}
+
+	usersDB := h.dbMgr.UsersDB()
+	tokenHash := util.HashToken(token)
+
+	storedToken, err := database.GetPasswordResetToken(usersDB, tokenHash)
+	if err != nil {
+		h.logger.Error("failed to get reset token", "error", err)
+		if isForm {
+			respondHTML(w, http.StatusInternalServerError, "Erreur", "Une erreur interne est survenue.")
+		} else {
+			util.RespondError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+	if storedToken == nil {
+		if isForm {
+			respondHTML(w, http.StatusBadRequest, "Lien invalide", "Ce lien de réinitialisation est invalide ou a déjà été utilisé.")
+		} else {
+			util.RespondError(w, http.StatusBadRequest, "invalid or expired reset token")
+		}
+		return
+	}
+
+	expiresAt, err := time.Parse(time.RFC3339, storedToken.ExpiresAt)
+	if err != nil || time.Now().UTC().After(expiresAt) {
+		database.DeletePasswordResetToken(usersDB, tokenHash)
+		if isForm {
+			respondHTML(w, http.StatusBadRequest, "Lien expiré", "Ce lien de réinitialisation a expiré. Veuillez en demander un nouveau depuis l'application.")
+		} else {
+			util.RespondError(w, http.StatusBadRequest, "reset token has expired")
+		}
+		return
+	}
+
+	hash, err := HashPassword(newPassword)
 	if err != nil {
 		h.logger.Error("failed to hash password", "error", err)
-		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		if isForm {
+			respondHTML(w, http.StatusInternalServerError, "Erreur", "Une erreur interne est survenue.")
+		} else {
+			util.RespondError(w, http.StatusInternalServerError, "internal error")
+		}
 		return
 	}
 
 	now := util.NowRFC3339()
 	if err := database.UpdatePasswordHash(usersDB, storedToken.UserID, hash, now); err != nil {
 		h.logger.Error("failed to update password", "error", err)
-		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		if isForm {
+			respondHTML(w, http.StatusInternalServerError, "Erreur", "Une erreur interne est survenue.")
+		} else {
+			util.RespondError(w, http.StatusInternalServerError, "internal error")
+		}
 		return
 	}
 
@@ -692,7 +831,11 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	database.DeleteRefreshTokensByUser(usersDB, storedToken.UserID)
 
 	h.logger.Info("password reset successful", "user_id", storedToken.UserID)
-	util.RespondJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
+	if isForm {
+		respondHTML(w, http.StatusOK, "Mot de passe modifié !", "Votre mot de passe a été réinitialisé avec succès. Vous pouvez retourner dans l'application Toutim pour vous connecter.")
+	} else {
+		util.RespondJSON(w, http.StatusOK, map[string]string{"message": "password reset successfully"})
+	}
 }
 
 // storeRefreshToken hashes and stores a refresh token.

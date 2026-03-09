@@ -47,8 +47,10 @@ func NewRouter(
 	r.Route("/api", func(r chi.Router) {
 		// Auth routes (public)
 		r.Route("/auth", func(r chi.Router) {
-			// GET endpoint — opened from browser via email link
+			// Browser-facing endpoints — opened from email links
 			r.Get("/verify-email", authHandler.VerifyEmail)
+			r.Get("/reset-password", authHandler.ResetPasswordForm)
+			r.Post("/reset-password", authHandler.ResetPassword)
 
 			r.Group(func(r chi.Router) {
 				r.Use(ContentTypeJSON)
@@ -57,7 +59,6 @@ func NewRouter(
 				r.Post("/refresh", authHandler.Refresh)
 				r.Post("/resend-verification", authHandler.ResendVerification)
 				r.Post("/forgot-password", authHandler.ForgotPassword)
-				r.Post("/reset-password", authHandler.ResetPassword)
 			})
 
 			// Auth routes (protected)
