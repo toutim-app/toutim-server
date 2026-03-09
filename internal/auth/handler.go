@@ -2,6 +2,7 @@ package auth
 
 import (
 	"database/sql"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -16,6 +17,32 @@ import (
 )
 
 var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+
+// respondHTML writes a simple branded HTML page for browser-facing endpoints.
+func respondHTML(w http.ResponseWriter, status int, title, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%s — Toutim</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8f9fa; color: #333; }
+  .card { background: #fff; border-radius: 16px; padding: 40px; max-width: 420px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  h1 { font-size: 24px; margin: 0 0 12px; }
+  p { font-size: 16px; color: #666; line-height: 1.5; margin: 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>%s</h1>
+  <p>%s</p>
+</div>
+</body>
+</html>`, title, title, message)
+}
 
 // Handler handles authentication endpoints.
 type Handler struct {
@@ -417,49 +444,46 @@ func (h *Handler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 	util.RespondJSON(w, http.StatusOK, map[string]string{"message": "account deleted"})
 }
 
-// VerifyEmail handles POST /api/auth/verify-email
+// VerifyEmail handles GET /api/auth/verify-email?token=...
 func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
-	var req verifyEmailRequest
-	if !util.DecodeJSON(w, r, &req) {
-		return
-	}
-	if req.Token == "" {
-		util.RespondError(w, http.StatusBadRequest, "token is required")
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		respondHTML(w, http.StatusBadRequest, "Lien invalide", "Le lien de vérification est invalide ou incomplet.")
 		return
 	}
 
 	usersDB := h.dbMgr.UsersDB()
-	tokenHash := util.HashToken(req.Token)
+	tokenHash := util.HashToken(token)
 
 	storedToken, err := database.GetEmailVerificationToken(usersDB, tokenHash)
 	if err != nil {
 		h.logger.Error("failed to get verification token", "error", err)
-		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		respondHTML(w, http.StatusInternalServerError, "Erreur", "Une erreur interne est survenue. Veuillez réessayer.")
 		return
 	}
 	if storedToken == nil {
-		util.RespondError(w, http.StatusBadRequest, "invalid or expired verification token")
+		respondHTML(w, http.StatusBadRequest, "Lien invalide", "Ce lien de vérification est invalide ou a déjà été utilisé.")
 		return
 	}
 
 	expiresAt, err := time.Parse(time.RFC3339, storedToken.ExpiresAt)
 	if err != nil || time.Now().UTC().After(expiresAt) {
 		database.DeleteEmailVerificationToken(usersDB, tokenHash)
-		util.RespondError(w, http.StatusBadRequest, "verification token has expired")
+		respondHTML(w, http.StatusBadRequest, "Lien expiré", "Ce lien de vérification a expiré. Veuillez en demander un nouveau depuis l'application.")
 		return
 	}
 
 	now := util.NowRFC3339()
 	if err := database.SetEmailVerified(usersDB, storedToken.UserID, now); err != nil {
 		h.logger.Error("failed to verify email", "error", err)
-		util.RespondError(w, http.StatusInternalServerError, "internal error")
+		respondHTML(w, http.StatusInternalServerError, "Erreur", "Une erreur interne est survenue. Veuillez réessayer.")
 		return
 	}
 
 	database.DeleteEmailVerificationTokensByUser(usersDB, storedToken.UserID)
 
 	h.logger.Info("email verified", "user_id", storedToken.UserID)
-	util.RespondJSON(w, http.StatusOK, map[string]string{"message": "email verified successfully"})
+	respondHTML(w, http.StatusOK, "Email vérifié !", "Votre adresse email a été vérifiée avec succès. Vous pouvez retourner dans l'application Toutim.")
 }
 
 // ResendVerification handles POST /api/auth/resend-verification
