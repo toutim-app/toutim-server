@@ -32,17 +32,19 @@ func respondHTML(w http.ResponseWriter, status int, title, message string) {
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8f9fa; color: #333; }
   .card { background: #fff; border-radius: 16px; padding: 40px; max-width: 420px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .logo { width: 64px; height: 64px; margin: 0 auto 16px; }
   h1 { font-size: 24px; margin: 0 0 12px; }
   p { font-size: 16px; color: #666; line-height: 1.5; margin: 0; }
 </style>
 </head>
 <body>
 <div class="card">
+  <img src="%s" alt="Toutim" class="logo">
   <h1>%s</h1>
   <p>%s</p>
 </div>
 </body>
-</html>`, title, title, message)
+</html>`, title, logoBase64, title, message)
 }
 
 // respondResetForm writes the password reset HTML form.
@@ -65,6 +67,7 @@ func respondResetForm(w http.ResponseWriter, token, errorMsg string) {
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f8f9fa; color: #333; }
   .card { background: #fff; border-radius: 16px; padding: 40px; max-width: 420px; width: 100%%; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+  .logo { width: 64px; height: 64px; margin: 0 auto 16px; display: block; }
   h1 { font-size: 24px; margin: 0 0 8px; text-align: center; }
   .subtitle { font-size: 15px; color: #666; text-align: center; margin: 0 0 24px; }
   label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #333; }
@@ -78,6 +81,7 @@ func respondResetForm(w http.ResponseWriter, token, errorMsg string) {
 </head>
 <body>
 <div class="card">
+  <img src="%s" alt="Toutim" class="logo">
   <h1>Nouveau mot de passe</h1>
   <p class="subtitle">Choisissez un nouveau mot de passe pour votre compte.</p>
   %s
@@ -103,7 +107,7 @@ function validate() {
 }
 </script>
 </body>
-</html>`, errorBlock, token)
+</html>`, logoBase64, errorBlock, token)
 }
 
 // Handler handles authentication endpoints.
