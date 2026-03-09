@@ -9,11 +9,8 @@ RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o toutim-server ./cmd/server
 # Runtime stage
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata
-RUN addgroup -S toutim && adduser -S toutim -G toutim
 COPY --from=builder /app/toutim-server /usr/local/bin/
-RUN mkdir -p /data && chown toutim:toutim /data
-USER toutim
-VOLUME /data
+RUN mkdir -p /data
 EXPOSE 8080
 ENV TOUTIM_DATA_DIR=/data
-CMD ["toutim-server"]
+ENTRYPOINT ["toutim-server"]
