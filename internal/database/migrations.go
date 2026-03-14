@@ -15,6 +15,9 @@ var usersSchemaV2SQL string
 //go:embed schema/user_data_schema.sql
 var userDataSchemaSQL string
 
+//go:embed schema/user_data_schema_v2.sql
+var userDataSchemaV2SQL string
+
 // Migration represents a versioned database migration.
 type Migration struct {
 	Version int
@@ -30,6 +33,7 @@ var usersMigrations = []Migration{
 // Per-user database migrations.
 var userDataMigrations = []Migration{
 	{Version: 1, SQL: userDataSchemaSQL},
+	{Version: 2, SQL: userDataSchemaV2SQL},
 }
 
 // migrateDB applies pending migrations to a database.

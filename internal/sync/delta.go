@@ -61,7 +61,7 @@ var tableForEntity = map[string]string{
 var columnsForEntity = map[string][]string{
 	"collection": {
 		"id", "name", "description", "icon", "color", "template_id",
-		"view_mode", "sync_status", "created_at", "updated_at",
+		"sort_order", "view_mode", "sync_status", "created_at", "updated_at",
 	},
 	"item": {
 		"id", "collection_id", "favorite", "sync_status", "created_at", "updated_at",

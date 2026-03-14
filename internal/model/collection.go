@@ -8,6 +8,7 @@ type Collection struct {
 	Icon        *string `json:"icon,omitempty"`
 	Color       string  `json:"color"`
 	TemplateID  *string `json:"template_id,omitempty"`
+	SortOrder   int     `json:"sort_order"`
 	ViewMode    string  `json:"view_mode"`
 	SyncStatus  string  `json:"sync_status"`
 	CreatedAt   string  `json:"created_at"`
