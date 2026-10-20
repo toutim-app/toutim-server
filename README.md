@@ -16,7 +16,7 @@ Ecrit en **Go**, sans dépendance CGO, avec **SQLite** embarqué (via `modernc.o
 
 ## Pré-requis
 
-- **Go 1.22+** (pour le développement / build local)
+- **Go 1.26+** (pour le développement / build local)
 - **Docker** et **Docker Compose** (pour le déploiement)
 
 ---

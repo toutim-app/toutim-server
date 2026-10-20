@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/fabienbmusic/toutim-server/internal/config"
 	"github.com/fabienbmusic/toutim-server/internal/util"
@@ -80,7 +81,7 @@ func (m *DatabaseManager) UserDB(userID string) (*sql.DB, error) {
 
 	// Open or create the database
 	dbPath := filepath.Join(m.dataDir, "user_data", userID+".db")
-	db, err := openSQLite(dbPath, 5000)
+	db, err := openSQLite(dbPath, 5*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("open user db: %w", err)
 	}
@@ -139,8 +140,9 @@ func (m *DatabaseManager) Close() {
 }
 
 // openSQLite opens a SQLite database with WAL mode and foreign keys enabled.
-func openSQLite(path string, busyTimeoutMs any) (*sql.DB, error) {
-	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_busy_timeout=%v&_foreign_keys=on", path, busyTimeoutMs)
+// Pragmas are passed via _pragma so they apply to every pooled connection.
+func openSQLite(path string, busyTimeout time.Duration) (*sql.DB, error) {
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(%d)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", path, busyTimeout.Milliseconds())
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
