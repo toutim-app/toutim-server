@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/util"
 )
 
 const tokenBytes = 32 // 256-bit tokens

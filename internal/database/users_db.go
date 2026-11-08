@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/fabienbmusic/toutim-server/internal/model"
+	"github.com/toutim-app/toutim-server/internal/model"
 )
 
 // CreateUser inserts a new user into users.db.

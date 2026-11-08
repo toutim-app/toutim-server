@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fabienbmusic/toutim-server/internal/config"
+	"github.com/toutim-app/toutim-server/internal/config"
 )
 
 // Sender sends emails via SMTP. When SMTP is not configured, all methods

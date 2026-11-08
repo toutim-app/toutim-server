@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fabienbmusic/toutim-server/internal/config"
+	"github.com/toutim-app/toutim-server/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fabienbmusic/toutim-server/internal/auth"
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/auth"
+	"github.com/toutim-app/toutim-server/internal/util"
 )
 
 // Handler handles sync HTTP endpoints.

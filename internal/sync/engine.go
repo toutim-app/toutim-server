@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fabienbmusic/toutim-server/internal/database"
+	"github.com/toutim-app/toutim-server/internal/database"
 )
 
 // Engine handles the sync logic for push and pull operations.

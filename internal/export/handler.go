@@ -9,9 +9,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fabienbmusic/toutim-server/internal/auth"
-	"github.com/fabienbmusic/toutim-server/internal/database"
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/auth"
+	"github.com/toutim-app/toutim-server/internal/database"
+	"github.com/toutim-app/toutim-server/internal/util"
 )
 
 // Handler handles export endpoints.

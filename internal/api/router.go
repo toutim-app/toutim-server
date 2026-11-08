@@ -4,12 +4,12 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/fabienbmusic/toutim-server/internal/auth"
-	"github.com/fabienbmusic/toutim-server/internal/database"
-	"github.com/fabienbmusic/toutim-server/internal/export"
-	"github.com/fabienbmusic/toutim-server/internal/files"
-	"github.com/fabienbmusic/toutim-server/internal/sync"
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/auth"
+	"github.com/toutim-app/toutim-server/internal/database"
+	"github.com/toutim-app/toutim-server/internal/export"
+	"github.com/toutim-app/toutim-server/internal/files"
+	"github.com/toutim-app/toutim-server/internal/sync"
+	"github.com/toutim-app/toutim-server/internal/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )

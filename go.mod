@@ -1,4 +1,4 @@
-module github.com/fabienbmusic/toutim-server
+module github.com/toutim-app/toutim-server
 
 go 1.26.0
 

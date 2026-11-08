@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fabienbmusic/toutim-server/internal/auth"
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/auth"
+	"github.com/toutim-app/toutim-server/internal/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

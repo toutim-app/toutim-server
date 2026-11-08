@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fabienbmusic/toutim-server/internal/config"
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/config"
+	"github.com/toutim-app/toutim-server/internal/util"
 	_ "modernc.org/sqlite"
 )
 

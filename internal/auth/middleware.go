@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/fabienbmusic/toutim-server/internal/util"
+	"github.com/toutim-app/toutim-server/internal/util"
 )
 
 type contextKey string

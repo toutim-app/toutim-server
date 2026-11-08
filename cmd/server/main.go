@@ -12,14 +12,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fabienbmusic/toutim-server/internal/api"
-	"github.com/fabienbmusic/toutim-server/internal/auth"
-	"github.com/fabienbmusic/toutim-server/internal/config"
-	"github.com/fabienbmusic/toutim-server/internal/database"
-	"github.com/fabienbmusic/toutim-server/internal/email"
-	"github.com/fabienbmusic/toutim-server/internal/export"
-	"github.com/fabienbmusic/toutim-server/internal/files"
-	"github.com/fabienbmusic/toutim-server/internal/sync"
+	"github.com/toutim-app/toutim-server/internal/api"
+	"github.com/toutim-app/toutim-server/internal/auth"
+	"github.com/toutim-app/toutim-server/internal/config"
+	"github.com/toutim-app/toutim-server/internal/database"
+	"github.com/toutim-app/toutim-server/internal/email"
+	"github.com/toutim-app/toutim-server/internal/export"
+	"github.com/toutim-app/toutim-server/internal/files"
+	"github.com/toutim-app/toutim-server/internal/sync"
 )
 
 func main() {

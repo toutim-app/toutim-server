@@ -26,7 +26,7 @@ Ecrit en **Go**, sans dépendance CGO, avec **SQLite** embarqué (via `modernc.o
 ### 1. Cloner le dépot
 
 ```bash
-git clone https://github.com/fabienbmusic/toutim-server.git
+git clone https://github.com/toutim-app/toutim-server.git
 cd toutim-server
 ```
 
